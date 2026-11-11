@@ -382,6 +382,27 @@ def assign_schedule(barber_id: int, date: str, time_slot: str, assign: bool, db:
     return {"message": "Schedule updated."}
 
 
+@app.post("/admin/assign-day/")
+def assign_day(barber_id: int, date: str, assign: bool, db: Session = Depends(get_db)):
+    """Make a barber bookable for every time slot on a date (or clear the whole day)."""
+    parse_date(date)
+    get_barber_or_404(db, barber_id)
+
+    existing = db.query(BarberSchedule).filter(
+        and_(BarberSchedule.barber_id == barber_id, BarberSchedule.date == date)
+    )
+    if assign:
+        have = {s.time_slot for s in existing.all()}
+        db.add_all([
+            BarberSchedule(barber_id=barber_id, date=date, time_slot=slot)
+            for slot in STANDARD_SLOTS if slot not in have
+        ])
+    else:
+        existing.delete()
+    db.commit()
+    return {"message": "Day assigned." if assign else "Day cleared."}
+
+
 @app.get("/admin/schedules/")
 def get_schedules(date: str, db: Session = Depends(get_db)):
     parse_date(date)

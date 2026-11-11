@@ -110,9 +110,9 @@
                         <div>
                             <h2 class="text-lg font-bold flex items-center space-x-2">
                                 <span>🖐️</span>
-                                <span>Drag & Drop Schedule Builder</span>
+                                <span>Daily Schedule Builder</span>
                             </h2>
-                            <p class="text-xs text-gray-500">Drag staff badges below into time slot drop-zones to assign shifts.</p>
+                            <p class="text-xs text-gray-500">Tap or drag a staff badge onto the day to make them bookable for every time slot that day.</p>
                         </div>
                         <div>
                             <input type="date" id="schedule-date-picker" onchange="loadScheduleMatrix()" class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold focus:outline-none focus:border-black">
@@ -120,15 +120,32 @@
                     </div>
 
                     <div class="p-4 bg-gray-50 border border-gray-200 rounded-2xl space-y-2">
-                        <p class="text-[11px] font-bold uppercase tracking-wider text-gray-500">Available Staff Badges (Drag from here):</p>
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-gray-500">Staff (tap to add for the whole day, or drag):</p>
                         <div id="draggable-barbers-tray" class="flex flex-wrap gap-2 pt-1">
                             <p class="text-xs text-gray-400">Loading staff...</p>
                         </div>
                     </div>
 
-                    <div id="schedule-slots-dropzone-container" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
-                        <p class="text-sm text-gray-400 col-span-2 text-center p-6">Loading schedule builder...</p>
+                    <div id="day-dropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDayDrop(event)"
+                         class="p-4 bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl transition space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span id="day-dropzone-title" class="text-sm font-black text-gray-800">Working this day</span>
+                            <span class="text-[10px] text-gray-400 uppercase font-semibold">Drop here for the full day</span>
+                        </div>
+                        <div id="day-dropzone-list" class="flex flex-wrap gap-2 min-h-[36px] items-center">
+                            <span class="text-[11px] text-gray-400 italic">Loading...</span>
+                        </div>
                     </div>
+
+                    <details class="group">
+                        <summary class="cursor-pointer select-none text-xs font-bold uppercase tracking-wider text-gray-500 hover:text-black">
+                            Fine-tune individual time slots (optional)
+                        </summary>
+                        <p class="text-[11px] text-gray-400 mt-2 mb-3">Remove someone from a single slot (e.g. a break), or drag a badge into one slot only.</p>
+                        <div id="schedule-slots-dropzone-container" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1">
+                            <p class="text-sm text-gray-400 col-span-2 text-center p-6">Loading schedule builder...</p>
+                        </div>
+                    </details>
                 </div>
 
             </div>
@@ -185,19 +202,21 @@
             const selectedDate = document.getElementById('timetable-date-picker').value;
 
             try {
-                const [barbersRes, appointmentsRes] = await Promise.all([
+                const [barbersRes, appointmentsRes, schedulesRes] = await Promise.all([
                     fetch(`${API_URL}/admin/barbers/`),
-                    fetch(`${API_URL}/appointments/?date=${selectedDate}`)
+                    fetch(`${API_URL}/appointments/?date=${selectedDate}`),
+                    fetch(`${API_URL}/admin/schedules/?date=${selectedDate}`)
                 ]);
 
-                if (!barbersRes.ok || !appointmentsRes.ok) throw new Error('Backend returned an error');
+                if (!barbersRes.ok || !appointmentsRes.ok || !schedulesRes.ok) throw new Error('Backend returned an error');
                 cachedBarbers = await barbersRes.json();
                 cachedAppointments = await appointmentsRes.json();
+                const timetableSchedules = await schedulesRes.json();
                 setConnectionStatus(true);
 
                 renderStaffRoster(cachedBarbers);
                 renderRecentBookings(cachedAppointments);
-                renderTimetable(cachedBarbers, cachedAppointments);
+                renderTimetable(cachedBarbers, cachedAppointments, timetableSchedules);
                 loadScheduleMatrix();
 
             } catch (err) {
@@ -271,7 +290,8 @@
             });
         }
 
-        function renderTimetable(barbers, appointments) {
+        function renderTimetable(barbers, appointments, schedules = []) {
+            const isScheduled = (barberId, slot) => schedules.some(s => s.barber_id === barberId && s.time_slot === slot);
             const gridDiv = document.getElementById('timetable-grid');
             const activeBarbers = barbers.filter(b => b.is_on_shift);
 
@@ -307,10 +327,16 @@
                                 <p class="text-[10px] text-gray-300">📞 ${esc(appt.phone_number)}</p>
                             </div>
                         `;
+                    } else if (isScheduled(barber.id, timeStr)) {
+                        html += `
+                            <div class="border border-dashed border-green-300 bg-green-50/60 rounded-lg p-2 text-center">
+                                <span class="text-[10px] text-green-600 uppercase tracking-widest font-semibold">Available</span>
+                            </div>
+                        `;
                     } else {
                         html += `
-                            <div class="border border-dashed border-gray-200 rounded-lg p-2 text-center">
-                                <span class="text-[10px] text-gray-300 uppercase tracking-widest font-semibold">Available</span>
+                            <div class="rounded-lg p-2 text-center bg-gray-50">
+                                <span class="text-[10px] text-gray-300 uppercase tracking-widest font-semibold">Not scheduled</span>
                             </div>
                         `;
                     }
@@ -334,6 +360,7 @@
                 const res = await fetch(`${API_URL}/admin/schedules/?date=${date}`);
                 cachedSchedules = await res.json();
                 renderDraggableBarbers(cachedBarbers);
+                renderDayDropzone(cachedBarbers, cachedSchedules, date);
                 renderSlotDropzones(cachedBarbers, cachedSchedules, date);
             } catch (err) {
                 console.error("Failed to load schedule matrix:", err);
@@ -354,7 +381,7 @@
                 const avatar = esc(avatarUrl(barber));
                 
                 tray.innerHTML += `
-                    <div draggable="true" ondragstart="handleDragStart(event, ${barber.id})" 
+                    <div draggable="true" ondragstart="handleDragStart(event, ${barber.id})" onclick="assignDay(${barber.id}, true)" title="Add for the whole day"
                          class="draggable-badge flex items-center space-x-2 bg-white px-3 py-1.5 border border-black/15 rounded-full shadow-sm hover:border-black transition text-xs font-bold">
                         <img src="${avatar}" class="w-5 h-5 rounded-full object-cover">
                         <span>${esc(barber.name)}</span>
@@ -362,6 +389,54 @@
                     </div>
                 `;
             });
+        }
+
+        function renderDayDropzone(barbers, schedules, date) {
+            const list = document.getElementById('day-dropzone-list');
+            const nice = new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+            document.getElementById('day-dropzone-title').innerText = `Working on ${nice}`;
+
+            const working = barbers.filter(b => schedules.some(s => s.barber_id === b.id));
+            if (working.length === 0) {
+                list.innerHTML = `<span class="text-[11px] text-gray-400 italic">Nobody scheduled - customers can't book this day yet.</span>`;
+                return;
+            }
+
+            list.innerHTML = working.map(barber => {
+                const count = schedules.filter(s => s.barber_id === barber.id).length;
+                const label = count >= STANDARD_SLOTS.length ? 'Full day' : `${count}/${STANDARD_SLOTS.length} slots`;
+                return `
+                    <div class="flex items-center space-x-2 bg-black text-white pl-1.5 pr-2.5 py-1 rounded-full text-xs font-medium shadow-sm">
+                        <img src="${esc(avatarUrl(barber))}" class="w-6 h-6 rounded-full object-cover">
+                        <span class="font-bold">${esc(barber.name)}</span>
+                        <span class="text-[10px] text-gray-300">${label}</span>
+                        ${count < STANDARD_SLOTS.length ? `<button onclick="assignDay(${barber.id}, true)" class="text-[10px] underline text-gray-300 hover:text-white">fill day</button>` : ''}
+                        <button onclick="assignDay(${barber.id}, false)" title="Remove for the whole day"
+                                class="ml-1 text-gray-400 hover:text-white font-bold transition">×</button>
+                    </div>`;
+            }).join('');
+        }
+
+        async function assignDay(barberId, assign) {
+            const date = document.getElementById('schedule-date-picker').value;
+            if (!date) return;
+            try {
+                const res = await fetch(`${API_URL}/admin/assign-day/?barber_id=${barberId}&date=${date}&assign=${assign}`, { method: 'POST' });
+                if (!res.ok) alert((await res.json()).detail || 'Failed to update the schedule.');
+            } catch (err) {
+                console.error("Error updating day schedule:", err);
+            }
+            await loadScheduleMatrix();
+            if (date === document.getElementById('timetable-date-picker').value) loadAdminData();
+        }
+
+        async function handleDayDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('drag-over');
+            if (!draggedBarberId) return;
+            const id = draggedBarberId;
+            draggedBarberId = null;
+            await assignDay(id, true);
         }
 
         function renderSlotDropzones(barbers, schedules, date) {
