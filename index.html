@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hairlab - Book Reservation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --logo-w: min(80vw, 560px); }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            /* HAIRLAB. logo (white on black) as the page background */
+            background: #000 url('static/brand/hairlab-logo.png') no-repeat center 1.5rem / var(--logo-w);
+            padding-top: calc(1.5rem + var(--logo-w) * 0.3365 + 0.5rem) !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-start justify-center p-4 pb-10">
+
+    <div class="w-full max-w-md bg-white p-6 md:p-8 rounded-3xl shadow-xl space-y-6">
+        
+        <div class="text-center space-y-1">
+            <h1 class="text-2xl font-black uppercase tracking-tight">Hairlab Reservation</h1>
+            <p class="text-xs text-gray-500">Pick your date, time, and scheduled barber.</p>
+        </div>
+
+        <form id="booking-form" onsubmit="submitBooking(event)" class="space-y-5">
+            
+            <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-2">1. Select Date</label>
+                <input type="date" id="booking-date" onchange="onDateOrSlotChange()" required 
+                       class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black font-medium">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-2">2. Select Time Slot</label>
+                <select id="booking-slot" onchange="onDateOrSlotChange()" required 
+                        class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black font-medium">
+                    <option value="">-- Choose Time Slot --</option>
+                    <option value="11:00 AM">11:00 AM</option>
+                    <option value="11:30 AM">11:30 AM</option>
+                    <option value="12:00 PM">12:00 PM</option>
+                    <option value="12:30 PM">12:30 PM</option>
+                    <option value="1:00 PM">1:00 PM</option>
+                    <option value="1:30 PM">1:30 PM</option>
+                    <option value="2:00 PM">2:00 PM</option>
+                    <option value="2:30 PM">2:30 PM</option>
+                    <option value="3:00 PM">3:00 PM</option>
+                    <option value="3:30 PM">3:30 PM</option>
+                    <option value="4:00 PM">4:00 PM</option>
+                    <option value="4:30 PM">4:30 PM</option>
+                    <option value="5:00 PM">5:00 PM</option>
+                    <option value="5:30 PM">5:30 PM</option>
+                    <option value="6:00 PM">6:00 PM</option>
+                    <option value="6:30 PM">6:30 PM</option>
+                    <option value="7:00 PM">7:00 PM</option>
+                    <option value="7:30 PM">7:30 PM</option>
+                    <option value="8:00 PM">8:00 PM</option>
+                    <option value="8:30 PM">8:30 PM</option>
+                    <option value="9:00 PM">9:00 PM</option>
+                    <option value="9:30 PM">9:30 PM</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-2">3. Select Scheduled Barber</label>
+                <div id="barber-selection-container" class="space-y-2">
+                    <p class="text-xs text-gray-400 italic">Select a date and time slot first to view assigned barbers.</p>
+                </div>
+            </div>
+
+            <div class="space-y-3 pt-2">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Your Name</label>
+                    <input type="text" id="customer-name" placeholder="John Doe" required 
+                           class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black font-medium">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">WhatsApp Phone Number</label>
+                    <input type="text" id="customer-phone" placeholder="+60123456789" required 
+                           class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black font-medium">
+                </div>
+            </div>
+
+            <button type="submit" id="submit-btn" class="w-full py-3.5 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition text-sm">
+                Lock in Reservation
+            </button>
+        </form>
+
+    </div>
+
+    <script>
+        // The pages are served by the FastAPI app itself (locally, on Vercel or on Render),
+        // so the API is on the same domain. Opening the file directly falls back to local uvicorn.
+        const API_URL = (() => {
+            const { protocol, hostname, port, origin } = window.location;
+            const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+            if (protocol === "file:" || (isLocal && ["5500", "5501"].includes(port))) return "http://localhost:8000"; // VS Code Live Server
+            return origin;
+        })();
+
+        // Local YYYY-MM-DD (toISOString() is UTC and gives yesterday before 8am in Malaysia)
+        function localDateStr(d = new Date()) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function avatarUrl(barber) {
+            return barber.profile_picture
+                ? `${API_URL}/${barber.profile_picture}`
+                : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(barber.name)}`;
+        }
+        let selectedBarberId = null;
+
+        const dateInput = document.getElementById('booking-date');
+        dateInput.value = localDateStr();
+        dateInput.min = localDateStr();
+
+        async function onDateOrSlotChange() {
+            const date = document.getElementById('booking-date').value;
+            const slot = document.getElementById('booking-slot').value;
+            const container = document.getElementById('barber-selection-container');
+
+            if (!date || !slot) {
+                container.innerHTML = `<p class="text-xs text-gray-400 italic">Select a date and time slot first to view assigned barbers.</p>`;
+                selectedBarberId = null;
+                return;
+            }
+
+            container.innerHTML = `<p class="text-xs text-gray-400">Loading available barbers...</p>`;
+
+            try {
+                selectedBarberId = null;
+                const res = await fetch(`${API_URL}/customer/barbers-for-slot/?date=${date}&time_slot=${encodeURIComponent(slot)}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const barbers = await res.json();
+
+                if (barbers.length === 0) {
+                    container.innerHTML = `<p class="text-xs text-red-500 font-medium">No barber available for this slot. Choose another time.</p>`;
+                    selectedBarberId = null;
+                    return;
+                }
+
+                container.innerHTML = '';
+                barbers.forEach(barber => {
+                    const avatar = avatarUrl(barber);
+                    
+                    container.innerHTML += `
+                        <div id="barber-card-${barber.id}" onclick="selectBarber(${barber.id})" 
+                             class="barber-card flex items-center space-x-3 p-3 border border-gray-200 rounded-xl cursor-pointer hover:border-black transition">
+                            <img src="${esc(avatar)}" class="w-10 h-10 rounded-full object-cover border">
+                            <div>
+                                <h4 class="font-bold text-sm text-black">${esc(barber.name)}</h4>
+                                <span class="text-[10px] text-green-600 font-bold uppercase tracking-wider">● Scheduled</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = `<p class="text-xs text-red-500">Error connecting to server.</p>`;
+            }
+        }
+
+        function selectBarber(barberId) {
+            selectedBarberId = barberId;
+            document.querySelectorAll('.barber-card').forEach(card => card.classList.remove('border-black', 'bg-gray-50'));
+            
+            const activeCard = document.getElementById(`barber-card-${barberId}`);
+            if (activeCard) {
+                activeCard.classList.add('border-black', 'bg-gray-50');
+            }
+        }
+
+        async function submitBooking(event) {
+            event.preventDefault();
+            if (!selectedBarberId) {
+                alert("Please select a barber for your slot!");
+                return;
+            }
+
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.innerText = "Locking it in...";
+
+            const date = document.getElementById('booking-date').value;
+            const slot = document.getElementById('booking-slot').value;
+            const customerName = document.getElementById('customer-name').value;
+            const phone = document.getElementById('customer-phone').value;
+
+            // "1:30 PM" -> "13:30" (parsed by hand; Safari/Firefox can't parse "1970-01-01 1:30 PM")
+            const [, h, m, ampm] = slot.match(/(\d+):(\d+) (AM|PM)/);
+            const hour24 = (Number(h) % 12) + (ampm === 'PM' ? 12 : 0);
+            const time24 = `${String(hour24).padStart(2, '0')}:${m}`;
+            const startIso = `${date}T${time24}:00`;
+
+            try {
+                const res = await fetch(`${API_URL}/book-slot/?barber_id=${selectedBarberId}&customer_name=${encodeURIComponent(customerName)}&phone_number=${encodeURIComponent(phone)}&start_time_iso=${encodeURIComponent(startIso)}`, {
+                    method: 'POST'
+                });
+
+                if (res.ok) {
+                    alert(`🎉 Reservation confirmed for ${slot} on ${date}!`);
+                    window.location.reload();
+                } else {
+                    const err = await res.json();
+                    alert(err.detail || "Booking failed.");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Server connection error.");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Lock in Reservation";
+            }
+        }
+    </script>
+</body>
+</html>

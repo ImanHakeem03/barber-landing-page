@@ -1,0 +1,20 @@
+# Secrets - never commit these
+credentials.json
+backend/credentials.json
+.env
+
+# Local database & Python cache
+*.db
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Deploy tool folders
+.vercel/
+
+# Old July copies kept for reference (not deployed)
+_archive/
+.claude/
+
+.vercel

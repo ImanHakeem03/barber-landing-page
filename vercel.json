@@ -1,0 +1,20 @@
+{
+  "regions": [
+    "sin1"
+  ],
+  "services": {
+    "barber-landing-page": {
+      "root": ".",
+      "entrypoint": "main.py"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "barber-landing-page"
+      }
+    }
+  ]
+}

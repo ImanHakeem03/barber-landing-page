@@ -1,0 +1,9 @@
+# Keep secrets, local data and old copies out of Vercel
+credentials.json
+*.db
+__pycache__/
+_archive/
+.claude/
+render.yaml
+.vercel/
+vercel.json.bak
