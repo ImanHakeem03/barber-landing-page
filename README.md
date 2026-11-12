@@ -67,7 +67,21 @@ All of these are optional.
 
 ## Deploy
 
-Once the Vercel project is connected to this repo (Vercel → Project → Settings → Git), every push to `main` deploys to production. The Neon Postgres database is attached through the Vercel Marketplace, which sets `DATABASE_URL`.
+Vercel deploys production automatically from the private mirror `imanhakeem/barber-landing-page`, branch **`live`**. That repo's `main` and `old-main` branches hold the old pre-Vercel version.
+
+To publish, push `main` to both repos:
+
+```bash
+git ship
+```
+
+`git ship` is a local alias for `git push origin main`, followed by pushing `main` to the mirror's `live` branch, signed in as the `imanhakeem` GitHub account. To set it up on another machine:
+
+```bash
+git remote add imanhakeem https://github.com/imanhakeem/barber-landing-page.git
+git config remote.imanhakeem.push refs/heads/main:refs/heads/live
+git config alias.ship '!git push origin main && GH_TOKEN=$(gh auth token --user imanhakeem) git push imanhakeem'
+``` The Neon Postgres database is attached through the Vercel Marketplace, which sets `DATABASE_URL`.
 
 To deploy manually from your machine:
 
