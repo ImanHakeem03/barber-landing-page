@@ -6,7 +6,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, File, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, LargeBinary, and_
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, LargeBinary, and_, func
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 
 import google_cal
@@ -407,6 +407,22 @@ def assign_day(barber_id: int, date: str, assign: bool, db: Session = Depends(ge
 def get_schedules(date: str, db: Session = Depends(get_db)):
     parse_date(date)
     return db.query(BarberSchedule).filter(BarberSchedule.date == date).all()
+
+
+@app.get("/admin/schedule-month/")
+def get_schedule_month(month: str, db: Session = Depends(get_db)):
+    """Per-day summary for the admin calendar: [{date, barber_id, slots}] for a YYYY-MM month."""
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Month must be in YYYY-MM format.")
+    rows = (
+        db.query(BarberSchedule.date, BarberSchedule.barber_id, func.count(BarberSchedule.id))
+        .filter(BarberSchedule.date.like(f"{month}-%"))
+        .group_by(BarberSchedule.date, BarberSchedule.barber_id)
+        .all()
+    )
+    return [{"date": d, "barber_id": b, "slots": n} for d, b, n in rows]
 
 
 @app.get("/appointments/")

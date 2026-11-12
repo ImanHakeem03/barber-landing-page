@@ -110,13 +110,28 @@
                         <div>
                             <h2 class="text-lg font-bold flex items-center space-x-2">
                                 <span>🖐️</span>
-                                <span>Daily Schedule Builder</span>
+                                <span>Schedule Calendar</span>
                             </h2>
-                            <p class="text-xs text-gray-500">Tap or drag a staff badge onto the day to make them bookable for every time slot that day.</p>
+                            <p class="text-xs text-gray-500">Pick a day on the calendar, then tap or drag a staff badge to make them bookable for every time slot that day.</p>
                         </div>
-                        <div>
-                            <input type="date" id="schedule-date-picker" onchange="loadScheduleMatrix()" class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold focus:outline-none focus:border-black">
+                        <input type="hidden" id="schedule-date-picker">
+                    </div>
+
+                    <!-- Month calendar: each day shows who is working -->
+                    <div class="border border-gray-200 rounded-2xl p-3 sm:p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <button type="button" onclick="shiftCalendarMonth(-1)" class="w-8 h-8 rounded-full hover:bg-gray-100 font-bold" aria-label="Previous month">‹</button>
+                            <div class="flex items-center gap-2">
+                                <span id="calendar-month-label" class="text-sm font-black uppercase tracking-wider">Month</span>
+                                <button type="button" onclick="selectCalendarDay(localDateStr())" class="text-[10px] font-bold uppercase text-gray-400 hover:text-black underline">Today</button>
+                            </div>
+                            <button type="button" onclick="shiftCalendarMonth(1)" class="w-8 h-8 rounded-full hover:bg-gray-100 font-bold" aria-label="Next month">›</button>
                         </div>
+                        <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase text-gray-400 mb-1">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div id="schedule-calendar" class="grid grid-cols-7 gap-1"></div>
+                        <p class="text-[10px] text-gray-400 mt-2">Black name = full day · grey name = part of the day · empty day = nobody bookable</p>
                     </div>
 
                     <div class="p-4 bg-gray-50 border border-gray-200 rounded-2xl space-y-2">
@@ -355,16 +370,78 @@
         async function loadScheduleMatrix() {
             const date = document.getElementById('schedule-date-picker').value;
             if (!date) return;
+            const month = calendarMonth;
 
             try {
-                const res = await fetch(`${API_URL}/admin/schedules/?date=${date}`);
-                cachedSchedules = await res.json();
+                const [dayRes, monthRes] = await Promise.all([
+                    fetch(`${API_URL}/admin/schedules/?date=${date}`),
+                    fetch(`${API_URL}/admin/schedule-month/?month=${month}`)
+                ]);
+                cachedSchedules = await dayRes.json();
+                const monthSummary = await monthRes.json();
+                if (month !== calendarMonth) return; // user flipped months while loading
+                renderScheduleCalendar(cachedBarbers, monthSummary, date);
                 renderDraggableBarbers(cachedBarbers);
                 renderDayDropzone(cachedBarbers, cachedSchedules, date);
                 renderSlotDropzones(cachedBarbers, cachedSchedules, date);
             } catch (err) {
                 console.error("Failed to load schedule matrix:", err);
             }
+        }
+
+        // --- MONTH CALENDAR ---
+        let calendarMonth = todayStr.slice(0, 7); // "YYYY-MM" currently shown
+
+        function shiftCalendarMonth(delta) {
+            const [y, m] = calendarMonth.split('-').map(Number);
+            const d = new Date(y, m - 1 + delta, 1);
+            calendarMonth = localDateStr(d).slice(0, 7);
+            renderScheduleCalendar(cachedBarbers, [], document.getElementById('schedule-date-picker').value);
+            loadScheduleMatrix();
+        }
+
+        function selectCalendarDay(date) {
+            document.getElementById('schedule-date-picker').value = date;
+            calendarMonth = date.slice(0, 7);
+            // Keep the timetable above on the same day
+            document.getElementById('timetable-date-picker').value = date;
+            loadAdminData();
+        }
+
+        function renderScheduleCalendar(barbers, monthSummary, selectedDate) {
+            const [y, m] = calendarMonth.split('-').map(Number);
+            const first = new Date(y, m - 1, 1);
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const lead = (first.getDay() + 6) % 7; // Monday-first grid
+            document.getElementById('calendar-month-label').innerText =
+                first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+            const byDate = {};
+            monthSummary.forEach(row => (byDate[row.date] ||= []).push(row));
+            const barberById = Object.fromEntries(barbers.map(b => [b.id, b]));
+            const today = localDateStr();
+
+            let html = '<div></div>'.repeat(lead);
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = `${calendarMonth}-${String(day).padStart(2, '0')}`;
+                const rows = (byDate[date] || []).filter(r => barberById[r.barber_id]);
+                const isSelected = date === selectedDate;
+                const isPast = date < today;
+                const chips = rows.map(r => {
+                    const full = r.slots >= STANDARD_SLOTS.length;
+                    return `<span class="block truncate rounded px-1 text-[9px] sm:text-[10px] font-bold leading-4 ${full ? 'bg-black text-white' : 'bg-gray-200 text-gray-700'}"
+                                  title="${esc(barberById[r.barber_id].name)}: ${full ? 'full day' : `${r.slots}/${STANDARD_SLOTS.length} slots`}">${esc(barberById[r.barber_id].name)}</span>`;
+                }).join('');
+                html += `
+                    <button type="button" onclick="selectCalendarDay('${date}')"
+                            class="min-h-[64px] sm:min-h-[76px] p-1 rounded-xl border text-left align-top flex flex-col gap-0.5 transition
+                                   ${isSelected ? 'border-black ring-2 ring-black' : 'border-gray-200 hover:border-black'}
+                                   ${isPast ? 'opacity-50' : ''}">
+                        <span class="text-[11px] font-black ${date === today ? 'bg-black text-white rounded-full w-5 h-5 flex items-center justify-center' : 'text-gray-700'}">${day}</span>
+                        ${chips}
+                    </button>`;
+            }
+            document.getElementById('schedule-calendar').innerHTML = html;
         }
 
         function renderDraggableBarbers(barbers) {
