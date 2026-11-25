@@ -4,6 +4,8 @@ Online booking for **HAIRLAB. Barber & Salon**. Customers pick a date, a time sl
 
 **Live:** https://barber-landing-page-kohl.vercel.app · **Admin:** https://barber-landing-page-kohl.vercel.app/admin
 
+Also on Render: https://barber-landing-page.onrender.com. It's the free tier, so the first request after a period of inactivity can take about a minute while it wakes up. Both sites share the same Neon database.
+
 ## Features
 
 - **Customer booking page** (`/`): choose a date and a 30-minute slot (11:00 AM – 9:30 PM), then a barber. Only barbers who are scheduled, on shift and not already booked for that slot are shown.
@@ -32,7 +34,7 @@ index.html         Customer booking page
 admin.html         Admin dashboard
 static/            Logo and default avatars
 vercel.json        Vercel config (Python service, Singapore region)
-render.yaml        Optional Render blueprint (not used by the live site)
+render.yaml        Render blueprint (reference for the Render service's settings)
 requirements.txt   Python dependencies
 ```
 
@@ -67,7 +69,7 @@ All of these are optional.
 
 ## Deploy
 
-Vercel deploys production automatically from the private mirror `imanhakeem/barber-landing-page`, branch **`live`**. That repo's `main` and `old-main` branches hold the old pre-Vercel version.
+Vercel and Render both deploy automatically from the private mirror `imanhakeem/barber-landing-page`, branch **`live`**, and both use the Neon database (`DATABASE_URL`). That repo's `main` and `old-main` branches hold the old pre-Vercel version.
 
 To publish, push `main` to both repos:
 
